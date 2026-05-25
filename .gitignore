@@ -1,0 +1,64 @@
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- Virtual Environments ---
+.venv/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# --- IDEs and Editors ---
+.vscode/
+.idea/
+.qodo/
+*.swp
+*.swo
+.DS_Store
+
+# --- Jupyter Notebooks ---
+.ipynb_checkpoints
+
+# --- Machine Learning / Weights & Models ---
+# Never track heavy weights or compiled engines
+*.pt
+*.onnx
+*.engine
+runs/
+models/
+
+# --- Dataset and Local I/O Data ---
+# Do not track raw videos, CSV logs or images
+data/
+configs/*.yaml.local
+*.mp4
+*.csv
+*.json
+
+# --- Weights & Biases (W&B) ---
+wandb/
+
+_test.py
