@@ -17,6 +17,9 @@ class ModelConfig:
     imgsz: int
     conf_threshold: float
     tracker_type: str
+    max_missing_frames: int
+    edge_margin: int
+    ema_alpha: float
 
 
 @dataclass

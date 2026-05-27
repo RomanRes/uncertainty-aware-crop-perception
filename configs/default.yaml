@@ -6,6 +6,10 @@ model:
   conf_threshold: 0.15          # Low threshold to feed uncertainty logic
   tracker_type: "bytetrack.yaml"
 
+  max_missing_frames: 10         # How long tracks survive without detection (Grace Period)
+  edge_margin: 20                # Ignore detections near image border (in pixels)
+  ema_alpha: 0.7                 # Exponential Moving Average smoothing factor (0.0 to 1.0)
+
 memory:
   window_size: 5                 # Frames for temporal uncertainty smoothing
   min_stable_frames: 3           # Frame count before a plant is marked as stable
@@ -18,7 +22,7 @@ io:
   input_video: "smooth_panning_field.mp4"
   output_video: "advanced_agricultural_engine.mp4"
   metrics_output_csv: "run_metrics.csv"
-  max_frames: 50                # Set to -1 to process the entire video
+  max_frames: -1                # Set to -1 to process the entire video
 
 # Classes Definition (Name and BGR Color for OpenCV visualization)
 classes:
