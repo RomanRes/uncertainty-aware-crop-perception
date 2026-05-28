@@ -53,6 +53,8 @@ class PlantTracker:
 
         self.model = YOLO(self.model_path)
         self.model.to(self.device)
+        #if self.device.startswith("cuda"):
+            #self.model.model.half()
 
         print(f"Tracker initialized using: {self.tracker_type}")
 
@@ -165,9 +167,10 @@ class PlantTracker:
             # Ignore unstable detections near borders
             # --------------------------------------------------------
             if (
-                x1 < self.edge_margin
-                or y1 < self.edge_margin
-                or x2 > w - self.edge_margin
+                #x1 < self.edge_margin
+                #or
+                y1 < self.edge_margin
+                #or x2 > w - self.edge_margin
                 or y2 > h - self.edge_margin
             ):
                 continue

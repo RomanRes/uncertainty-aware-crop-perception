@@ -39,7 +39,9 @@ class IOConfig:
     input_video: str
     output_video: str
     metrics_output_csv: str
+    metrics_output_json: str
     max_frames: int
+    side_by_side: bool
 
 
 # ==============================================================================
@@ -53,6 +55,8 @@ class SystemConfig:
     decision: DecisionConfig
     io: IOConfig
     classes: ClassConfig
+
+
 
 
 # ==============================================================================

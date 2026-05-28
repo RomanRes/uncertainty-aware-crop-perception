@@ -1,72 +1,162 @@
+# utils/viz.py
 import cv2
 import numpy as np
-from typing import Union
+from typing import Dict
 from utils.config_manager import SystemConfig, ClassConfig
+from decision.state import TrackedPlant, InterventionState
 
+
+def _generate_uncertainty_canvas(
+        frame: np.ndarray,
+        active_plants: Dict[int, TrackedPlant],
+        config: SystemConfig,
+        action_line_y: int
+) -> np.ndarray:
+    """
+    Helper: Generates the black-background uncertainty canvas.
+    Displays dynamic class names, IDs, bounding boxes, and uncertainty-glowing masks.
+    """
+    h, w, _ = frame.shape
+    canvas = np.zeros((h, w, 3), dtype=np.uint8)
+
+    # Draw geofencing limit on the black canvas
+    cv2.line(canvas, (0, action_line_y), (w, action_line_y), (255, 255, 255), 1, cv2.LINE_AA)
+    cv2.putText(canvas, "ACTION LIMIT", (10, action_line_y - 10),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+
+    mask_overlay = np.zeros_like(canvas)
+    has_masks = False
+
+    for plant_id, plant in active_plants.items():
+        if not plant.is_stable or plant.bbox is None:
+            continue
+
+        x1, y1, x2, y2 = map(int, plant.bbox)
+        cls_id = plant.class_id
+
+        # Dynamic Class Name lookup from the YAML configuration
+        if cls_id in config.classes:
+            label_name = config.classes[cls_id].name
+        else:
+            label_name = f"Unknown_{cls_id}"
+
+        # Linear BGR interpolation based on smoothed confidence (Green = Certain, Red = Uncertain)
+        conf = np.clip(plant.smoothed_conf, 0.0, 1.0)
+        green_val = int(255 * conf)
+        red_val = int(255 * (1.0 - conf))
+        color = (0, green_val, red_val)
+
+        # Draw neutral white bounding boxes
+        cv2.rectangle(canvas, (x1, y1), (x2, y2), (200, 200, 200), 1)
+
+        # NEW: Draw dynamic Class Name, ID, and Smoothed Confidence
+        label = f"{label_name} #{plant_id} | C:{plant.smoothed_conf:.2f}"
+        cv2.putText(canvas, label, (x1, y1 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (250, 250, 250), 1, cv2.LINE_AA)
+
+        if plant.mask is not None:
+            has_masks = True
+            mask = plant.mask.astype(bool)
+            mask_overlay[mask] = color
+
+            # Das addWeighted wird ausgeführt
+    if has_masks:
+        canvas = cv2.addWeighted(canvas, 1.0, mask_overlay, 0.5, 0)
+
+            # CRITICAL FIX: Return the fully rendered 3D canvas back to the caller!
+    return canvas
 
 # ==============================================================================
-# VISUALIZATION UTILS (HIGH-PERFORMANCE RENDERER)
+# VISUALIZATION UTILS
 # ==============================================================================
 
 def draw_predictions(
         frame: np.ndarray,
-        ids: np.ndarray,
-        boxes: np.ndarray,
-        masks: np.ndarray,
-        classes: np.ndarray,
+        active_plants: Dict[int, TrackedPlant],
+        decisions: Dict[int, InterventionState],
         config: SystemConfig
 ) -> np.ndarray:
     """
-    Draws tracking bounding boxes, IDs, and aggregated colored masks on the frame.
-    Optimized for single-pass alpha blending and high-throughput execution.
+    Draws stabilized bounding boxes, IDs, and aggregated masks on the frame.
+    Colors and labels are dynamically adjusted based on the active InterventionState.
     """
-    # 4. Typing & Empty Check: Immediate return to prevent useless copying
-    if len(ids) == 0:
+    # If no plants are currently in memory, return the original frame immediately
+    if not active_plants:
         return frame
 
     annotated_frame = frame.copy()
+    h, w, _ = frame.shape
 
-    # 1. Performance Optimization: Initialize a single overlay canvas for all masks
-    # We will accumulate all masks here and blend ONLY ONCE at the end.
+    # 1. Geofencing: Calculate and draw the active action zone limit
+    action_line_y = int(h * (1.0 - config.decision.action_zone_ratio))
+    cv2.line(annotated_frame, (0, action_line_y), (w, action_line_y), (255, 255, 255), 2)
+    cv2.putText(annotated_frame, "ACTION ZONE LIMIT", (10, action_line_y - 10),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+
+    # Initialize a single overlay canvas for all masks (Single-pass blending)
     mask_overlay = np.zeros_like(annotated_frame)
-    has_masks = masks is not None and len(masks) > 0
+    has_masks = False
 
-    # 3. Production Safety: Determine the minimum safe length to prevent IndexErrors
-    n = min(len(ids), len(boxes), len(classes))
-    if has_masks:
-        n = min(n, len(masks))
+    # 2. Iterate through all active plants in memory
+    for plant_id, plant in active_plants.items():
+        # Anti-Flicker: Only render plants that have stabilized
+        if not plant.is_stable:
+            continue
 
-    # Core Drawing Loop
-    for i in range(n):
-        plant_id = int(ids[i])
-        x1, y1, x2, y2 = map(int, boxes[i])
-        cls_id = int(classes[i])
+        x1, y1, x2, y2 = map(int, plant.bbox)
+        cls_id = plant.class_id
 
-        # Safe lookup for classes configuration
-        if cls_id in config.classes:
-            class_cfg: ClassConfig = config.classes[cls_id]
-            color = tuple(class_cfg.color)
-            label_name = class_cfg.name
-        else:
-            color = (128, 128, 128)  # Gray fallback
-            label_name = f"Unknown_{cls_id}"
+        # Get the computed decision state (default to MONITOR if not evaluated)
+        state = decisions.get(plant_id, InterventionState.MONITOR)
 
-        # Draw bounding box and ID label
+        # 3. Dynamic Color and Label Mapping based on InterventionState
+        if state == InterventionState.IGNORE:
+            # Weeds are ignored in crop-targeted mode -> Draw with neutral Gray
+            color = (128, 128, 128)
+            label_text = f"Weed #{plant_id} (IGNORE)"
+
+        elif state == InterventionState.MONITOR:
+            # Crop is detected but outside the action zone -> Draw with Cyan (Waiting)
+            color = (255, 255, 0)
+            label_text = f"Crop #{plant_id} (MONITOR) | C: {plant.smoothed_conf:.2f}"
+
+        elif state == InterventionState.ALLOW_ACTION:
+            # Crop in action zone with low uncertainty -> Draw with configured Green (Ready)
+            if cls_id in config.classes:
+                color = tuple(config.classes[cls_id].color)
+            else:
+                color = (0, 255, 0)
+            label_text = f"Crop #{plant_id} (ALLOW_ACTION) | C: {plant.smoothed_conf:.2f}"
+
+        elif state == InterventionState.DENY_ACTION:
+            # Crop in action zone but too uncertain -> Draw with bright Red (Safety Abort)
+            color = (0, 0, 255)
+            label_text = f"Crop #{plant_id} (DENY_ACTION) | C: {plant.smoothed_conf:.2f}"
+
+        # 4. Draw Bounding Box
         cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
 
-        label = f"{label_name} ID: {plant_id}"
-        cv2.putText(annotated_frame, label, (x1, y1 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2, cv2.LINE_AA)
+        # 5. Draw ID and State Label
+        cv2.putText(annotated_frame, label_text, (x1, y1 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA)
 
-        # 2. Mask Safety & Accumulation
-        if has_masks:
-            # Force explicit boolean type to prevent OpenCV indexing anomalies
-            mask = masks[i].astype(bool)
-            # Accumulate this plant's mask onto the single overlay canvas
+        # 6. Accumulate Segmentation Mask
+        if plant.mask is not None:
+            has_masks = True
+            mask = plant.mask.astype(bool)
             mask_overlay[mask] = color
 
-    # 1. Single-Pass Blending: Blend the accumulated overlay ONCE (O(1) instead of O(N))
+    # 7. Single-Pass Blending: Blend the accumulated overlay once (O(1))
     if has_masks:
         annotated_frame = cv2.addWeighted(annotated_frame, 1.0, mask_overlay, 0.4, 0)
 
-    return annotated_frame
+    if config.io.side_by_side:
+        # Generate the separate black uncertainty canvas
+        uncertainty_frame = _generate_uncertainty_canvas(frame, active_plants, config, action_line_y)
+        # Horizontally concatenate both frames (double width)
+        combined_frame = np.hstack((annotated_frame, uncertainty_frame))
+        return combined_frame
+    else:
+        # Return standard single-width frame
+        return annotated_frame
+

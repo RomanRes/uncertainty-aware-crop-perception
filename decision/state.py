@@ -11,13 +11,10 @@ from utils.config_manager import MemoryConfig
 # ==============================================================================
 
 class InterventionState(Enum):
-    """
-    Standardized states for the robotic decision and intervention pipeline.
-    """
-    IGNORE = 0  # Non-target instances (Weeds in crop-targeted mode)
-    MONITOR = 1  # Target detected but outside the active action zone
-    ALLOW_ACTION = 2  # Target in action zone with low uncertainty (Ready)
-    DENY_ACTION = 3  # Target in action zone but uncertainty is too high (Safety Abort)
+    IGNORE = 0  # Non-target instances
+    MONITOR = 1  # Target detected but outside the active Region of Interest (ROI)
+    ALLOW_ACTION = 2  # Target in ROI with high smoothed confidence (Ready)
+    DENY_ACTION = 3  # Target in ROI but smoothed confidence is too low (Safety Abort)
 
 
 # ==============================================================================
@@ -30,52 +27,54 @@ class TrackedPlant:
     Represents a single tracked plant instance over time (Digital Twin).
     """
     plant_id: int
-    class_id: int  # 0 for crop, 1 for weed
+    class_id: int
 
-    # field(default_factory=list) is used to initialize empty lists in dataclasses safely
-    entropy_history: List[float] = field(default_factory=list)
-    seen_count: int = 0  # Number of consecutive frames detected
-    is_stable: bool = False  # True only if seen_count >= min_stable_frames
-    smoothed_entropy: float = 1.0  # Starts at maximum uncertainty (1.0)
+    # Tracking lifecycle and smoothing
+    conf_history: List[float] = field(default_factory=list)
+    seen_count: int = 0
+    missing_count: int = 0  # Grace period counter
+    is_stable: bool = False
+    smoothed_conf: float = 0.0  # Temporally smoothed confidence
 
-    # Latest spatial data (for geofencing and visualization)
+    # Spatial data
     bbox: np.ndarray = None  # [x1, y1, x2, y2]
-    mask: np.ndarray = None  # Binary mask (bool)
+    mask: np.ndarray = None  # Binary mask
 
-    def update_metrics(self, entropy: float, bbox: np.ndarray, mask: np.ndarray, config: MemoryConfig):
+    def update_history(self, conf: float, bbox: np.ndarray, mask: np.ndarray, config: MemoryConfig):
         """
-        Updates the plant's history and calculates smoothed temporal uncertainty.
+        Updates tracking metrics, spatial data, and temporal confidence smoothing.
         """
         self.bbox = bbox
         self.mask = mask
         self.seen_count += 1
+        self.missing_count = 0  # Reset missing counter when detected
 
-        # 1. Anti-Flicker check: Has the plant been detected long enough?
+        # Anti-Flicker check
         if self.seen_count >= config.min_stable_frames:
             self.is_stable = True
 
-        # 2. Update entropy history (Sliding Window)
-        self.entropy_history.append(entropy)
-        if len(self.entropy_history) > config.window_size:
-            self.entropy_history.pop(0)  # Remove oldest record
+        # Update confidence history (Sliding Window)
+        self.conf_history.append(conf)
+        if len(self.conf_history) > config.window_size:
+            self.entropy_history = self.conf_history.pop(0)
 
-        # 3. Calculate smoothed (mean) entropy over the window
-        self.smoothed_entropy = float(np.mean(self.entropy_history))
+        # Smooth confidence over the temporal window
+        self.smoothed_conf = float(np.mean(self.conf_history))
 
 
 # ==============================================================================
-# 3. STATE MANAGER (Manages the active population on the field)
+# 3. STATE MANAGER
 # ==============================================================================
 
 class StateManager:
     """
-    Manages the lifecycle of all active tracked plants in the camera frame.
-    Ensures zero-memory leaks by deleting lost tracks immediately.
+    Manages the lifecycle of active tracked plants.
+    Implements a trace grace period to prevent track loss during short occlusions.
     """
 
-    def __init__(self, config: MemoryConfig):
+    def __init__(self, config: MemoryConfig, max_missing_frames: int = 5):
         self.config = config
-        # Dictionary mapping plant_id -> TrackedPlant object
+        self.max_missing_frames = max_missing_frames
         self.active_plants: Dict[int, TrackedPlant] = {}
 
     def update_state(
@@ -87,45 +86,55 @@ class StateManager:
             masks: np.ndarray
     ):
         """
-        Updates active plants with new detections, registers new ones, 
-        and removes plants that have left the frame.
+        Orchestrates the state update pipeline (SRP compliant).
+        """
+        current_frame_ids = self._update_active_tracks(ids, classes, confs, boxes, masks)
+        self._cleanup_lost_tracks(current_frame_ids)
+
+    def _update_active_tracks(self, ids, classes, confs, boxes, masks) -> set:
+        """
+        Helper: Registers new tracks and updates existing ones with spatial data.
         """
         current_frame_ids = set()
+        if len(ids) == 0:
+            return current_frame_ids
 
-        # Process new detections
-        if len(ids) > 0:
-            for i, plant_id in enumerate(ids):
-                current_frame_ids.add(plant_id)
+        for i, plant_id in enumerate(ids):
+            current_frame_ids.add(plant_id)
 
-                # Calculate raw Shannon Entropy for this single frame detection
-                conf = confs[i]
-                p_win = np.clip(conf, 1e-5, 1.0 - 1e-5)
-                p_lose = 1.0 - p_win
-                probs = np.array([p_win, p_lose])
-                probs = probs / np.sum(probs)
-                raw_entropy = -np.sum(probs * np.log2(probs))
+            # Extract current frame features
+            conf = confs[i]
+            bbox = boxes[i]
+            mask = masks[i]
+            class_id = int(classes[i])
 
-                # Extract spatial data
-                bbox = boxes[i]
-                mask = masks[i]
-                class_id = int(classes[i])
-
-                # If plant is new, register it in memory
-                if plant_id not in self.active_plants:
-                    self.active_plants[plant_id] = TrackedPlant(
-                        plant_id=plant_id,
-                        class_id=class_id
-                    )
-
-                # Update the plant's state history
-                self.active_plants[plant_id].update_metrics(
-                    entropy=raw_entropy,
-                    bbox=bbox,
-                    mask=mask,
-                    config=self.config
+            # Register new plant if not in memory
+            if plant_id not in self.active_plants:
+                self.active_plants[plant_id] = TrackedPlant(
+                    plant_id=plant_id,
+                    class_id=class_id
                 )
 
-        # MEMORY CLEANUP: Remove lost plants that left the camera frame
+            # Update temporal history and smooth features
+            self.active_plants[plant_id].update_history(
+                conf=conf,
+                bbox=bbox,
+                mask=mask,
+                config=self.config
+            )
+
+        return current_frame_ids
+
+    def _cleanup_lost_tracks(self, current_frame_ids: set):
+        """
+        Helper: Implements a grace period before deleting lost tracks from RAM.
+        """
         lost_ids = set(self.active_plants.keys()) - current_frame_ids
-        for lost_id in lost_ids:
-            del self.active_plants[lost_id]
+
+        for lost_id in list(lost_ids):
+            plant = self.active_plants[lost_id]
+            plant.missing_count += 1
+
+            # Delete only if the plant has been missing for too many frames
+            if plant.missing_count > self.max_missing_frames:
+                del self.active_plants[lost_id]
