@@ -8,25 +8,35 @@ from decision.state import StateManager
 from decision.policy import DecisionEngine
 from utils.logging import SystemLogger
 from utils.viz import draw_predictions
+from utils.gpu_helper import GPUHelper
+import torch
+import sys
 
 
 def main():
+    print("MAIN CUDA:", torch.cuda.is_available())
+    print("MAIN GPU COUNT:", torch.cuda.device_count())
+    print("PYTHON:", sys.executable)
+
     print("Starting Industrial Perception Pipeline...")
 
     # 1. Load System Configuration from YAML into typed Dataclasses
     cfg = load_config("configs/default.yaml")
 
-    # 2. Initialize Core Modules
+    # 2. Initialize GPU Telemetry Helper
+    gpu_helper = GPUHelper()
+
+    # 3. Initialize Core Modules
     tracker = PlantTracker(cfg)
     state_manager = StateManager(cfg.memory)
     decision_engine = DecisionEngine(cfg)
 
-    # 3. Dynamic Telemetry Path Generation & Logger Initialization
+    # 4. Dynamic Telemetry Path Generation & Logger Initialization
     csv_path = cfg.io.metrics_output_csv
     json_path = csv_path.replace(".csv", ".json")
     logger = SystemLogger(csv_path, json_path)
 
-    # 4. Initialize Video Input
+    # 5. Initialize Video Input
     cap = cv2.VideoCapture(cfg.io.input_video)
     if not cap.isOpened():
         print(f"Error: Cannot open input video at {cfg.io.input_video}")
@@ -45,8 +55,7 @@ def main():
         frames_to_process = total_frames
         print(f"Processing full video: {frames_to_process} frames.")
 
-    # 5. Initialize Video Output
-
+    # 6. Initialize Video Output (Supports dynamic width allocation)
     output_width = width * 2 if cfg.io.side_by_side else width
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -77,18 +86,32 @@ def main():
             # STEP 3: Decision Engine (Evaluate crop states and dynamic ROI geofencing)
             decisions = decision_engine.evaluate_plants(state_manager.active_plants, width, height)
 
-            # STEP 4: Rendering (Draws decision-state-aware overlays with 4 arguments)
-            annotated_frame = draw_predictions(frame, state_manager.active_plants, decisions, cfg)
+            # STEP 4: Query Real-time GPU Utilization
+            gpu_util = gpu_helper.get_utilization()
 
-            # STEP 5: Write output stream
+            # STEP 5: Calculate total frame latency
+            frame_time_ms = (time.time() - start_frame_time) * 1000.0
+
+            # STEP 6: Rendering (Draws decision-state-aware overlays with telemetry)
+            annotated_frame = draw_predictions(
+                frame=frame,
+                active_plants=state_manager.active_plants,
+                decisions=decisions,
+                config=cfg,
+                inference_time_ms=inference_time_ms,
+                frame_time_ms=frame_time_ms,
+                gpu_util=gpu_util
+            )
+
+            # STEP 7: Write output stream
             out.write(annotated_frame)
 
-            # STEP 6: Telemetry Logging (Calculate total frame latency and log)
-            frame_time_ms = (time.time() - start_frame_time) * 1000.0
+            # STEP 8: Telemetry Logging (Log all performance metrics to CSV)
             logger.log_frame(
                 frame_idx=frame_idx,
                 inference_time_ms=inference_time_ms,
                 frame_time_ms=frame_time_ms,
+                gpu_util=gpu_util,
                 active_plants=state_manager.active_plants,
                 decisions=decisions
             )

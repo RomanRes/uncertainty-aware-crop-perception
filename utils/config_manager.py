@@ -42,6 +42,7 @@ class IOConfig:
     metrics_output_json: str
     max_frames: int
     side_by_side: bool
+    show_telemetry: bool
 
 
 # ==============================================================================

@@ -52,16 +52,19 @@ class SystemLogger:
                 "inference_time_ms",
                 "frame_time_ms",
                 "fps",
+                "gpu_util_percent",
                 "active_tracks",
                 "allow_action_count",
                 "deny_action_count"
             ])
+
 
     def log_frame(
             self,
             frame_idx: int,
             inference_time_ms: float,
             frame_time_ms: float,
+            gpu_util: int,
             active_plants: Dict[int, TrackedPlant],
             decisions: Dict[int, InterventionState]
     ):
@@ -112,6 +115,7 @@ class SystemLogger:
                 f"{inference_time_ms:.2f}",
                 f"{frame_time_ms:.2f}",
                 f"{fps:.1f}",
+                gpu_util,
                 active_tracks,
                 allow_count,
                 deny_count
@@ -162,3 +166,4 @@ class SystemLogger:
             json.dump(summary, f, indent=4)
 
         print(f"📊 JSON Summary successfully compiled and saved to: {self.json_path}")
+

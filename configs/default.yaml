@@ -23,8 +23,9 @@ io:
   output_video: "vertical_advanced_agricultural_engine.mp4"
   metrics_output_csv: "run_metrics.csv"
   metrics_output_json: "data/metrics.json"
-  max_frames: -1              # Set to -1 to process the entire video
+  max_frames: 50             # Set to -1 to process the entire video
   side_by_side: true            # TRUE = Double-width with Heatmap | FALSE = Standard Single-width
+  show_telemetry: true
 
 # Classes Definition (Name and BGR Color for OpenCV visualization)
 classes:
