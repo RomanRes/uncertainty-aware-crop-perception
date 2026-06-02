@@ -1,9 +1,20 @@
-# utils/viz.py
+# utils/viz_profile.py
 import cv2
 import numpy as np
+import time
 from typing import Dict
-from utils.config_manager import SystemConfig, ClassConfig
+from utils.config_manager import SystemConfig
 from decision.state import TrackedPlant, InterventionState
+
+# Global accumulator for drawing step times
+viz_step_times = {
+    "mask_overlay_init": [],
+    "box_and_text_render": [],
+    "mask_blending_weighted": [],
+    "uncertainty_canvas_gen": [],
+    "side_by_side_stacking": [],
+    "telemetry_overlay": []
+}
 
 
 def _generate_uncertainty_canvas(
@@ -19,7 +30,6 @@ def _generate_uncertainty_canvas(
     cv2.putText(canvas, "ACTION LIMIT", (10, action_line_y - 10),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
 
-    # OPT 4: mask_overlay nur einmal allozieren, direkt beschreiben
     mask_overlay = np.zeros_like(canvas)
     has_masks = False
 
@@ -42,7 +52,6 @@ def _generate_uncertainty_canvas(
 
         if plant.mask is not None:
             has_masks = True
-            # OPT 4: direktes numpy Boolean-Indexing statt astype(bool) nochmal
             mask_overlay[plant.mask] = color
 
     if has_masks:
@@ -50,10 +59,6 @@ def _generate_uncertainty_canvas(
 
     return canvas
 
-
-# ==============================================================================
-# VISUALIZATION UTILS
-# ==============================================================================
 
 def draw_predictions(
         frame: np.ndarray,
@@ -64,22 +69,23 @@ def draw_predictions(
         frame_time_ms: float = 0.0,
         gpu_util: int = 0
 ) -> np.ndarray:
-
     h, w, _ = frame.shape
     action_line_y = int(h * (1.0 - config.decision.action_zone_ratio))
-
-    # OPT 5: Telemetry-Werte einmal berechnen
     fps = 1000.0 / frame_time_ms if frame_time_ms > 0 else 0.0
 
-    # --- EDGE CASE: keine Pflanzen ---
+    # --- EDGE CASE: No active plants ---
     if not active_plants:
+        t_start = time.time()
         if config.io.side_by_side:
             combined_frame = np.hstack((frame, np.zeros_like(frame)))
         else:
             combined_frame = frame.copy()
+        viz_step_times["side_by_side_stacking"].append((time.time() - t_start) * 1000.0)
 
+        t_start = time.time()
         if config.io.show_telemetry:
             _draw_telemetry(combined_frame, fps, inference_time_ms, gpu_util)
+        viz_step_times["telemetry_overlay"].append((time.time() - t_start) * 1000.0)
 
         return combined_frame
 
@@ -89,10 +95,15 @@ def draw_predictions(
     cv2.putText(annotated_frame, "ACTION ZONE LIMIT", (10, action_line_y - 10),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
 
-    # OPT 4: Ein einzelnes mask_overlay für alle Masken → ein addWeighted statt N
+    # SUB-STEP 1: Initialize mask overlay
+    t_start = time.time()
     mask_overlay = np.zeros_like(annotated_frame)
+    viz_step_times["mask_overlay_init"].append((time.time() - t_start) * 1000.0)
+
     has_masks = False
 
+    # SUB-STEP 2: Draw bounding boxes and text labels
+    t_start = time.time()
     for plant_id, plant in active_plants.items():
         if not plant.is_stable or plant.bbox is None:
             continue
@@ -124,41 +135,53 @@ def draw_predictions(
 
         if plant.mask is not None:
             has_masks = True
-            # OPT 4: Direktes Boolean-Indexing — kein .astype(bool) nötig da Maske schon bool
             mask_overlay[plant.mask] = color
 
+    viz_step_times["box_and_text_render"].append((time.time() - t_start) * 1000.0)
+
+    # SUB-STEP 3: Blend masks via cv2.addWeighted
+    t_start = time.time()
     if has_masks:
         annotated_frame = cv2.addWeighted(annotated_frame, 1.0, mask_overlay, 0.4, 0)
+    viz_step_times["mask_blending_weighted"].append((time.time() - t_start) * 1000.0)
 
-    # --- SIDE-BY-SIDE ---
+    # SUB-STEP 4: Generate uncertainty canvas
+    t_start = time.time()
     if config.io.side_by_side:
         try:
             uncertainty_frame = _generate_uncertainty_canvas(frame, active_plants, config, action_line_y)
             if not isinstance(uncertainty_frame, np.ndarray) or uncertainty_frame.ndim != 3:
-                raise ValueError("Ungültiger Canvas")
+                raise ValueError("Invalid Canvas")
         except Exception as e:
             print(f"\nWarning: Uncertainty rendering failed: {e}. Using black fallback.")
             uncertainty_frame = np.zeros_like(annotated_frame)
+    viz_step_times["uncertainty_canvas_gen"].append((time.time() - t_start) * 1000.0)
 
+    # SUB-STEP 5: Stacking frames side-by-side
+    t_start = time.time()
+    if config.io.side_by_side:
         combined_frame = np.hstack((annotated_frame, uncertainty_frame))
     else:
         combined_frame = annotated_frame
+    viz_step_times["side_by_side_stacking"].append((time.time() - t_start) * 1000.0)
 
-    # --- TELEMETRY ---
+    # SUB-STEP 6: Draw telemetry overlay
+    t_start = time.time()
     if config.io.show_telemetry:
         _draw_telemetry(combined_frame, fps, inference_time_ms, gpu_util)
+    viz_step_times["telemetry_overlay"].append((time.time() - t_start) * 1000.0)
 
     return combined_frame
 
 
 def _draw_telemetry(frame: np.ndarray, fps: float, inference_ms: float, gpu_util: int):
-    """OPT 5: Ausgelagerte Hilfsfunktion — verhindert Code-Duplikation und spart Kopien."""
     box_w, box_h = 220, 90
     overlay = frame.copy()
     cv2.rectangle(overlay, (5, 5), (box_w, box_h), (0, 0, 0), -1)
-    cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)  # in-place schreiben
+    cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
 
-    cv2.putText(frame, "System Telemetry",          (15, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
-    cv2.putText(frame, f"FPS: {fps:.1f}",           (15, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.4,  (0, 255, 0),    1, cv2.LINE_AA)
-    cv2.putText(frame, f"Inference: {inference_ms:.1f} ms", (15, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
-    cv2.putText(frame, f"GPU Util: {gpu_util}%",    (15, 79), cv2.FONT_HERSHEY_SIMPLEX, 0.4,  (255, 255, 0),  1, cv2.LINE_AA)
+    cv2.putText(frame, "System Telemetry", (15, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
+    cv2.putText(frame, f"FPS: {fps:.1f}", (15, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1, cv2.LINE_AA)
+    cv2.putText(frame, f"Inference: {inference_ms:.1f} ms", (15, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1,
+                cv2.LINE_AA)
+    cv2.putText(frame, f"GPU Util: {gpu_util}%", (15, 79), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1, cv2.LINE_AA)

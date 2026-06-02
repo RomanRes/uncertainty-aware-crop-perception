@@ -21,7 +21,7 @@ decision:
 io:
   input_video: "vertical_drone_flight.mp4"
   output_video: "vertical_advanced_agricultural_engine.mp4"
-  metrics_output_csv: "run_metrics.csv"
+  metrics_output_csv: "data/run_metrics.csv"
   metrics_output_json: "data/metrics.json"
   max_frames: 50             # Set to -1 to process the entire video
   side_by_side: true            # TRUE = Double-width with Heatmap | FALSE = Standard Single-width

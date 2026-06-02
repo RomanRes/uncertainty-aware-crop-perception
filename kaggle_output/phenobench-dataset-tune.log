@@ -1,0 +1,25 @@
+[{"stream_name":"stderr","time":4.081922146,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":4.082036897,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":4.602081271,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":4.602127231,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":5.780852266,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":8.403181998,"data":"[NbConvertApp] Support files will be in __results___files/\n"}
+,{"stream_name":"stderr","time":8.403632177,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.406384718,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.408555937,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.409190717,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.409937737,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.410455757,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.411373227,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.411562227,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.412174157,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.413061687,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.413982587,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.415053606,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.415619297,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.418823476,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.420274236000001,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.421479856,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.421900606,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":8.422497826,"data":"[NbConvertApp] Writing 1063358 bytes to __results__.html\n"}
+]
