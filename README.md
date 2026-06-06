@@ -80,20 +80,30 @@ Video Frame
 
 ## Performance Benchmarks
 
-Achieving real-time performance is paramount for robotic applications. Our system demonstrates superior speed, particularly with hardware-accelerated backends.
+Achieving real-time performance is paramount for robotic applications. Our system demonstrates superior speed and accuracy across various model architectures and backends.
 
 **Measurement Environment:**
 *   **GPU:** NVIDIA Tesla T4
 *   **Input Resolution:** 960 × 960 pixels
 *   **Dataset:** PhenoBench drone footage
 
-| Backend       | Full `predict()` Latency | Pure Inference Latency | Notes                               |
-| ------------- | ------------------------ | ---------------------- | ----------------------------------- |
-| PyTorch (.pt) | ~90 ms                   | ~55 ms                 | Baseline performance.               |
-| ONNX Runtime  | ~54 ms                   | ~50 ms                 | Leveraging CUDAExecutionProvider.   |
-| TensorRT FP16 | ~48 ms                   | **~28 ms**             | Highly optimized, requires TRT 11.  |
+### Accuracy Comparison: YOLO11s vs YOLO26s
 
-> **Insight:** TensorRT pure inference is approximately 2× faster than ONNX. The remaining gap in full `predict()` latency is primarily due to pre/post-processing overhead at 960px resolution.
+| Metric       | PT_11S_FP32 | ONNX_11S_FP32 | ONNX_11S_FP16 | TRT_11S_FP32 | TRT_11S_FP16 | PT_26S_FP32 | ONNX_26S_FP16 | TRT_26S_FP16 |
+|--------------|-------------|---------------|---------------|--------------|--------------|-------------|---------------|--------------|
+| Box mAP50    | 0.8714      | 0.8714        | 0.8641        | 0.8642       | 0.8642       | 0.8750      | 0.8758        | 0.8759       |
+| Box mAP50-95 | 0.6734      | 0.6734        | 0.6626        | 0.6645       | 0.6628       | 0.6749      | 0.6742        | 0.6743       |
+| Seg mAP50    | 0.8454      | 0.8454        | 0.8479        | 0.8406       | 0.8473       | 0.8434      | 0.8505        | 0.8510       |
+| Seg mAP50-95 | 0.5619      | 0.5619        | 0.5547        | 0.5460       | 0.5543       | 0.5566      | 0.5593        | 0.5592       |
+
+### Performance Comparison: Speed & Latency
+
+| Metric       | PT_11S_FP32 | ONNX_11S_FP32 | ONNX_11S_FP16 | TRT_11S_FP32 | TRT_11S_FP16 | PT_26S_FP32 | ONNX_26S_FP16 | TRT_26S_FP16 |
+|--------------|-------------|---------------|---------------|--------------|--------------|-------------|---------------|--------------|
+| Avg FPS      | 19.5        | 13.9          | 18.7          | 19.0         | 22.3         | 19.0        | 18.7          | 21.9         |
+| Latency (ms) | 48.58       | 68.94         | 50.60         | 49.90        | 41.95        | 49.88       | 50.87         | 42.70        |
+
+> **Insight:** TensorRT FP16 consistently offers the lowest latency and highest FPS across both YOLO11s and YOLO26s models, demonstrating its effectiveness for real-time applications. While YOLO26s generally shows slightly higher accuracy, YOLO11s provides a better balance of speed and performance.
 
 ---
 

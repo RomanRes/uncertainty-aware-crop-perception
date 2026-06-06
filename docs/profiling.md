@@ -3,26 +3,25 @@ Test Setup
 
 - GPU: NVIDIA T4
 - Resolution: 960×960
-- Model: YOLO11s-Seg
-- Precision: FP32
+- Model: YOLO26s-Seg
+- Precision: FP16 (.engine)
 - Tracker: ByteTrack
 ===================================================================================
 PIPELINE STEP PROFILING SUMMARY (Average execution time per frame)
 ===================================================================================
 Pipeline Step                              Avg Time (ms)       Percentage (%)
 -----------------------------------------------------------------------------------
-video_read                                        1.45 ms                0.6%
-perception_inference                            139.20 ms               60.6%
-state_memory_update                               0.10 ms                0.0%
-decision_engine                                   0.03 ms                0.0%
-gpu_telemetry                                     1.52 ms                0.7%
-rendering_overlays                               73.36 ms               31.9%
-video_write                                      13.88 ms                6.0%
-telemetry_logging                                 0.20 ms                0.1%
+video_read                                        1.11 ms                2.6%
+perception_inference                             39.90 ms               93.3%
+state_memory_update                               0.11 ms                0.3%
+decision_engine                                   0.03 ms                0.1%
+gpu_telemetry                                     1.48 ms                3.5%
+telemetry_logging                                 0.14 ms                0.3%
 -----------------------------------------------------------------------------------
-Total Pipeline Latency                          229.75 ms              100.0%
-Calculated Throughput                              4.4 FPS
+Total Pipeline Latency                           42.78 ms              100.0%
+Calculated Throughput                             23.4 FPS
 ===================================================================================
+Pipeline execution completed successfully.
 
 ===================================================================================
 DETAILED VISUALIZATION PROFILING SUMMARY (Inside rendering_overlays)
