@@ -12,6 +12,18 @@ def _generate_uncertainty_canvas(
         config: SystemConfig,
         action_line_y: int
 ) -> np.ndarray:
+    """
+    Generates a canvas visualizing uncertainty for active plants.
+
+    Args:
+        frame (np.ndarray): The original video frame.
+        active_plants (Dict[int, TrackedPlant]): Dictionary of currently tracked plants.
+        config (SystemConfig): The system configuration.
+        action_line_y (int): The y-coordinate of the action line.
+
+    Returns:
+        np.ndarray: The generated uncertainty canvas.
+    """
     h, w, _ = frame.shape
     canvas = np.zeros((h, w, 3), dtype=np.uint8)
 
@@ -19,7 +31,6 @@ def _generate_uncertainty_canvas(
     cv2.putText(canvas, "ACTION LIMIT", (10, action_line_y - 10),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
 
-    # OPT 4: mask_overlay nur einmal allozieren, direkt beschreiben
     mask_overlay = np.zeros_like(canvas)
     has_masks = False
 
@@ -42,7 +53,6 @@ def _generate_uncertainty_canvas(
 
         if plant.mask is not None:
             has_masks = True
-            # OPT 4: direktes numpy Boolean-Indexing statt astype(bool) nochmal
             mask_overlay[plant.mask] = color
 
     if has_masks:
@@ -64,14 +74,29 @@ def draw_predictions(
         frame_time_ms: float = 0.0,
         gpu_util: int = 0
 ) -> np.ndarray:
+    """
+    Draws predictions, bounding boxes, masks, and telemetry onto the video frame.
+
+    Args:
+        frame (np.ndarray): The original video frame.
+        active_plants (Dict[int, TrackedPlant]): Dictionary of currently tracked plants.
+        decisions (Dict[int, InterventionState]): Dictionary of intervention decisions for each plant.
+        config (SystemConfig): The system configuration.
+        inference_time_ms (float): Time taken for model inference in milliseconds.
+        frame_time_ms (float): Total time taken to process the current frame in milliseconds.
+        gpu_util (int): Current GPU utilization percentage.
+
+    Returns:
+        np.ndarray: The annotated frame with predictions and telemetry.
+    """
 
     h, w, _ = frame.shape
     action_line_y = int(h * (1.0 - config.decision.action_zone_ratio))
 
-    # OPT 5: Telemetry-Werte einmal berechnen
+    # Calculate telemetry values once
     fps = 1000.0 / frame_time_ms if frame_time_ms > 0 else 0.0
 
-    # --- EDGE CASE: keine Pflanzen ---
+    # --- EDGE CASE: no plants ---
     if not active_plants:
         if config.io.side_by_side:
             combined_frame = np.hstack((frame, np.zeros_like(frame)))
@@ -89,7 +114,7 @@ def draw_predictions(
     cv2.putText(annotated_frame, "ACTION ZONE LIMIT", (10, action_line_y - 10),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
 
-    # OPT 4: Ein einzelnes mask_overlay für alle Masken → ein addWeighted statt N
+    # A single mask_overlay for all masks
     mask_overlay = np.zeros_like(annotated_frame)
     has_masks = False
 
@@ -124,7 +149,6 @@ def draw_predictions(
 
         if plant.mask is not None:
             has_masks = True
-            # OPT 4: Direktes Boolean-Indexing — kein .astype(bool) nötig da Maske schon bool
             mask_overlay[plant.mask] = color
 
     if has_masks:
@@ -135,7 +159,7 @@ def draw_predictions(
         try:
             uncertainty_frame = _generate_uncertainty_canvas(frame, active_plants, config, action_line_y)
             if not isinstance(uncertainty_frame, np.ndarray) or uncertainty_frame.ndim != 3:
-                raise ValueError("Ungültiger Canvas")
+                raise ValueError("Invalid Canvas")
         except Exception as e:
             print(f"\nWarning: Uncertainty rendering failed: {e}. Using black fallback.")
             uncertainty_frame = np.zeros_like(annotated_frame)
@@ -152,11 +176,19 @@ def draw_predictions(
 
 
 def _draw_telemetry(frame: np.ndarray, fps: float, inference_ms: float, gpu_util: int):
-    """OPT 5: Ausgelagerte Hilfsfunktion — verhindert Code-Duplikation und spart Kopien."""
+    """
+    Draws system telemetry information (FPS, inference time, GPU utilization) onto the frame.
+
+    Args:
+        frame (np.ndarray): The frame to draw telemetry on.
+        fps (float): Frames per second.
+        inference_ms (float): Inference time in milliseconds.
+        gpu_util (int): GPU utilization percentage.
+    """
     box_w, box_h = 220, 90
     overlay = frame.copy()
     cv2.rectangle(overlay, (5, 5), (box_w, box_h), (0, 0, 0), -1)
-    cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)  # in-place schreiben
+    cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
 
     cv2.putText(frame, "System Telemetry",          (15, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
     cv2.putText(frame, f"FPS: {fps:.1f}",           (15, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.4,  (0, 255, 0),    1, cv2.LINE_AA)

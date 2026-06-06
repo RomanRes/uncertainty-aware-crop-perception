@@ -4,6 +4,9 @@ import os
 
 @dataclass
 class ClassConfig:
+    """
+    Configuration for a single class, including its name and color for visualization.
+    """
     name: str
     color: list # List of 3 ints: [B, G, R]
 

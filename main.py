@@ -14,6 +14,11 @@ import sys
 
 
 def main():
+    """
+    Main function for the Industrial Perception Pipeline.
+    It initializes the system, processes video frames, tracks plants,
+    makes decisions, and logs telemetry.
+    """
     print("MAIN CUDA:", torch.cuda.is_available())
     print("MAIN GPU COUNT:", torch.cuda.device_count())
     print("PYTHON:", sys.executable)

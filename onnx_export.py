@@ -1,3 +1,8 @@
+"""
+This script is responsible for exporting the YOLO PyTorch model to ONNX format.
+It loads a locally downloaded PyTorch weights file and converts it to an ONNX model,
+optimized for C++ compatibility and CPU-based inference.
+"""
 from ultralytics import YOLO
 
 # 1. Load your locally downloaded PyTorch weights on CPU

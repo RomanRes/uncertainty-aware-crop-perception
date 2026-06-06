@@ -12,6 +12,7 @@ from utils.config_manager import SystemConfig, ModelConfig, MemoryConfig, Decisi
 
 @pytest.fixture
 def config():
+    """Fixture for a default SystemConfig instance for testing."""
     return SystemConfig(
         model=ModelConfig(
             path="models/model.pt",
@@ -41,11 +42,14 @@ def config():
 
 
 def make_dummy_frame(h=480, w=640):
+    """Creates a dummy image frame for testing."""
     return np.zeros((h, w, 3), dtype=np.uint8)
 
 
 def make_mock_results(n=2, h=480, w=640, has_masks=True):
-    """Creates a mock Ultralytics Results object with n detections."""
+    """
+    Creates a mock Ultralytics Results object with 'n' detections for testing.
+    """
     results = MagicMock()
 
     import torch
@@ -73,7 +77,7 @@ def make_mock_results(n=2, h=480, w=640, has_masks=True):
 class TestTrackerOutputFormat:
     """
     Verifies the output structure of track_frame() using a mocked YOLO model.
-    No GPU or actual YOLO weights are required.
+    No GPU or actual YOLO weights are required for these tests.
     """
 
     def _make_tracker(self, config):
@@ -109,7 +113,7 @@ class TestTrackerOutputFormat:
         assert classes.shape == (0,)
 
     def test_none_tracking_ids_returns_empty(self, config):
-        """When boxes.id is None the tracker must return empty arrays."""
+        """When boxes.id is None, the tracker must return empty arrays."""
         tracker = self._make_tracker(config)
         frame = make_dummy_frame()
 
@@ -161,8 +165,10 @@ class TestTrackerOutputFormat:
 # ==============================================================================
 
 class TestEMASmoothing:
+    """Tests for Exponential Moving Average (EMA) smoothing of bounding boxes."""
 
     def _make_tracker_with_mock(self, config):
+        """Helper to create a PlantTracker instance with a mocked YOLO backend."""
         with patch("perception.tracker.YOLO") as MockYOLO, \
              patch("perception.tracker.torch.cuda.is_available", return_value=False), \
              patch("perception.tracker.os.path.exists", return_value=False):
@@ -176,7 +182,7 @@ class TestEMASmoothing:
             return tracker
 
     def test_first_detection_returns_raw_box(self, config):
-        """First detection for an ID has no history — returns the raw box unchanged."""
+        """The first detection for an ID has no history, so it returns the raw box unchanged."""
         tracker = self._make_tracker_with_mock(config)
         box = np.array([50.0, 50.0, 150.0, 150.0], dtype=np.float32)
 
@@ -185,7 +191,7 @@ class TestEMASmoothing:
         assert np.allclose(smooth, box)
 
     def test_ema_blends_toward_new_box(self, config):
-        """EMA output is a weighted blend: alpha * new + (1 - alpha) * previous."""
+        """EMA output should be a weighted blend: alpha * new + (1 - alpha) * previous."""
         tracker = self._make_tracker_with_mock(config)
 
         prev_box = np.array([0.0,   0.0,   100.0, 100.0], dtype=np.float32)
@@ -204,8 +210,10 @@ class TestEMASmoothing:
 # ==============================================================================
 
 class TestEdgeFilter:
+    """Tests for filtering detections near image edges."""
 
     def _make_tracker_with_mock(self, config):
+        """Helper to create a PlantTracker instance with a mocked YOLO backend."""
         with patch("perception.tracker.YOLO") as MockYOLO, \
              patch("perception.tracker.torch.cuda.is_available", return_value=False), \
              patch("perception.tracker.os.path.exists", return_value=False):
@@ -219,18 +227,18 @@ class TestEdgeFilter:
             return tracker
 
     def test_detection_at_top_edge_is_filtered(self, config):
-        """Detection whose y1 is within the top edge margin must be filtered out."""
+        """A detection whose y1 is within the top edge margin must be filtered out."""
         tracker = self._make_tracker_with_mock(config)
-        # y1=5 < edge_margin=20 → filtered
+        # y1=5 < edge_margin=20 -> filtered
         assert tracker._is_at_edge(y1=5.0, y2=100.0, h=480, edge_margin=20) is True
 
     def test_detection_at_bottom_edge_is_filtered(self, config):
-        """Detection whose y2 exceeds the bottom edge margin must be filtered out."""
+        """A detection whose y2 exceeds the bottom edge margin must be filtered out."""
         tracker = self._make_tracker_with_mock(config)
-        # y2=470 > h - edge_margin = 460 → filtered
+        # y2=470 > h - edge_margin = 460 -> filtered
         assert tracker._is_at_edge(y1=200.0, y2=470.0, h=480, edge_margin=20) is True
 
     def test_detection_in_center_is_not_filtered(self, config):
-        """Detection fully within the safe image area must not be filtered."""
+        """A detection fully within the safe image area must not be filtered."""
         tracker = self._make_tracker_with_mock(config)
         assert tracker._is_at_edge(y1=100.0, y2=300.0, h=480, edge_margin=20) is False

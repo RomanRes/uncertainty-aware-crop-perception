@@ -7,7 +7,6 @@ from perception.tracker import PlantTracker
 from decision.state import StateManager
 from decision.policy import DecisionEngine
 from utils.logging import SystemLogger
-# KORREKTUR: Importiert nun die profilierte Version der Visualisierung
 from utils.viz_profile import draw_predictions, viz_step_times
 from utils.gpu_helper import GPUHelper
 import torch
@@ -15,6 +14,11 @@ import sys
 
 
 def main():
+    """
+    Main function for running the Industrial Perception Pipeline with detailed profiling.
+    It initializes the system, processes video frames, tracks plants,
+    makes decisions, logs telemetry, and prints performance summaries.
+    """
     print("PROFILING RUN")
     print("MAIN CUDA:", torch.cuda.is_available())
     print("MAIN GPU COUNT:", torch.cuda.device_count())

@@ -12,6 +12,7 @@ from utils.config_manager import SystemConfig, ModelConfig, MemoryConfig, Decisi
 
 @pytest.fixture
 def config():
+    """Fixture for a default SystemConfig instance for testing."""
     return SystemConfig(
         model=ModelConfig(
             path="model.pt",
@@ -42,16 +43,28 @@ def config():
 
 @pytest.fixture
 def engine(config):
+    """Fixture for a DecisionEngine instance with the default config."""
     return DecisionEngine(config)
 
 
-# Bildgröße für alle Tests
+# Image dimensions for all tests
 FRAME_W = 640
 FRAME_H = 480
 
 
 def make_stable_plant(plant_id: int, class_id: int, bbox: list, smoothed_conf: float) -> TrackedPlant:
-    """Hilfsfunktion: stabile Pflanze mit vorgegebener BBox und Konfidenz."""
+    """
+    Helper function to create a stable plant with a given bounding box and confidence.
+
+    Args:
+        plant_id (int): The ID of the plant.
+        class_id (int): The class ID of the plant.
+        bbox (list): The bounding box coordinates [x1, y1, x2, y2].
+        smoothed_conf (float): The smoothed confidence score.
+
+    Returns:
+        TrackedPlant: A TrackedPlant instance configured as stable.
+    """
     plant = TrackedPlant(plant_id=plant_id, class_id=class_id)
     plant.is_stable = True
     plant.bbox = np.array(bbox, dtype=np.float32)
@@ -60,6 +73,7 @@ def make_stable_plant(plant_id: int, class_id: int, bbox: list, smoothed_conf: f
 
 
 def center_of(bbox):
+    """Calculates the center coordinates of a bounding box."""
     x1, y1, x2, y2 = bbox
     return int((x1 + x2) / 2), int((y1 + y2) / 2)
 
@@ -69,16 +83,17 @@ def center_of(bbox):
 # ==============================================================================
 
 class TestWeedPolicy:
+    """Tests related to the policy for weed detection."""
 
     def test_weed_always_ignored(self, engine):
-        """Unkraut (class 1) wird immer IGNORE — unabhängig von Position und Konfidenz."""
-        # Im ROI, hohe Konfidenz — trotzdem IGNORE
+        """Weeds (class 1) should always be IGNORE, regardless of position and confidence."""
+        # In ROI, high confidence - still IGNORE
         plant = make_stable_plant(1, class_id=1, bbox=[200, 300, 400, 450], smoothed_conf=0.99)
         decisions = engine.evaluate_plants({1: plant}, FRAME_W, FRAME_H)
         assert decisions[1] == InterventionState.IGNORE
 
     def test_weed_outside_roi_also_ignored(self, engine):
-        """Unkraut außerhalb ROI → ebenfalls IGNORE."""
+        """Weeds outside ROI should also be IGNORE."""
         plant = make_stable_plant(1, class_id=1, bbox=[10, 10, 50, 50], smoothed_conf=0.9)
         decisions = engine.evaluate_plants({1: plant}, FRAME_W, FRAME_H)
         assert decisions[1] == InterventionState.IGNORE
@@ -89,9 +104,10 @@ class TestWeedPolicy:
 # ==============================================================================
 
 class TestStabilityGuard:
+    """Tests related to the stability guard for tracked plants."""
 
     def test_unstable_plant_skipped(self, engine):
-        """Nicht-stabile Pflanze erscheint nicht in decisions."""
+        """An unstable plant should not appear in decisions."""
         plant = TrackedPlant(plant_id=1, class_id=0)
         plant.is_stable = False
         plant.bbox = np.array([200, 300, 400, 450], dtype=np.float32)
@@ -101,7 +117,7 @@ class TestStabilityGuard:
         assert 1 not in decisions
 
     def test_plant_without_bbox_skipped(self, engine):
-        """Pflanze ohne BBox erscheint nicht in decisions."""
+        """A plant without a bounding box should not appear in decisions."""
         plant = TrackedPlant(plant_id=1, class_id=0)
         plant.is_stable = True
         plant.bbox = None
@@ -117,39 +133,40 @@ class TestStabilityGuard:
 
 class TestROIGeofencing:
     """
-    action_zone_ratio=0.5 bedeutet:
-    ROI Y: 240 bis 456 (bei H=480)
-    ROI X: 32 bis 608  (bei W=640)
+    Tests related to Region of Interest (ROI) geofencing.
+    With action_zone_ratio=0.5:
+    ROI Y: 240 to 456 (for H=480)
+    ROI X: 32 to 608 (for W=640)
     """
 
     def test_crop_inside_roi_high_conf_allow(self, engine):
-        """Crop im ROI mit hoher Konfidenz → ALLOW_ACTION."""
-        # Mitte des Bildes = mitten im ROI
+        """Crop inside ROI with high confidence should result in ALLOW_ACTION."""
+        # Center of the image = center of ROI
         plant = make_stable_plant(1, class_id=0, bbox=[270, 280, 370, 380], smoothed_conf=0.9)
         decisions = engine.evaluate_plants({1: plant}, FRAME_W, FRAME_H)
         assert decisions[1] == InterventionState.ALLOW_ACTION
 
     def test_crop_inside_roi_low_conf_deny(self, engine):
-        """Crop im ROI mit niedriger Konfidenz → DENY_ACTION."""
+        """Crop inside ROI with low confidence should result in DENY_ACTION."""
         plant = make_stable_plant(1, class_id=0, bbox=[270, 280, 370, 380], smoothed_conf=0.1)
         decisions = engine.evaluate_plants({1: plant}, FRAME_W, FRAME_H)
         assert decisions[1] == InterventionState.DENY_ACTION
 
     def test_crop_above_roi_monitor(self, engine):
-        """Crop oberhalb des ROI → MONITOR."""
-        # Y-Zentrum bei 50 → weit über ROI-Grenze (240)
+        """Crop above the ROI should result in MONITOR."""
+        # Y-center at 50 -> far above ROI boundary (240)
         plant = make_stable_plant(1, class_id=0, bbox=[200, 10, 400, 90], smoothed_conf=0.9)
         decisions = engine.evaluate_plants({1: plant}, FRAME_W, FRAME_H)
         assert decisions[1] == InterventionState.MONITOR
 
     def test_conf_exactly_at_threshold_allow(self, engine):
-        """Konfidenz genau am Threshold → ALLOW_ACTION (>=)."""
+        """Confidence exactly at threshold should result in ALLOW_ACTION (>=)."""
         plant = make_stable_plant(1, class_id=0, bbox=[270, 280, 370, 380], smoothed_conf=0.5)
         decisions = engine.evaluate_plants({1: plant}, FRAME_W, FRAME_H)
         assert decisions[1] == InterventionState.ALLOW_ACTION
 
     def test_conf_just_below_threshold_deny(self, engine):
-        """Konfidenz knapp unter Threshold → DENY_ACTION."""
+        """Confidence just below threshold should result in DENY_ACTION."""
         plant = make_stable_plant(1, class_id=0, bbox=[270, 280, 370, 380], smoothed_conf=0.49)
         decisions = engine.evaluate_plants({1: plant}, FRAME_W, FRAME_H)
         assert decisions[1] == InterventionState.DENY_ACTION
@@ -160,14 +177,15 @@ class TestROIGeofencing:
 # ==============================================================================
 
 class TestMultiPlant:
+    """Tests for scenarios involving multiple plants."""
 
     def test_empty_plants_returns_empty_decisions(self, engine):
-        """Keine Pflanzen → leere decisions."""
+        """No plants should result in empty decisions."""
         decisions = engine.evaluate_plants({}, FRAME_W, FRAME_H)
         assert decisions == {}
 
     def test_mixed_plants_correct_decisions(self, engine):
-        """Crop im ROI + Weed + Crop außerhalb ROI → alle korrekt."""
+        """Mixed plants (crop in ROI, weed, crop outside ROI) should all be handled correctly."""
         plants = {
             1: make_stable_plant(1, class_id=0, bbox=[270, 280, 370, 380], smoothed_conf=0.9),  # ALLOW
             2: make_stable_plant(2, class_id=1, bbox=[270, 280, 370, 380], smoothed_conf=0.9),  # IGNORE
@@ -180,7 +198,7 @@ class TestMultiPlant:
         assert decisions[3] == InterventionState.MONITOR
 
     def test_two_crops_different_confidence(self, engine):
-        """Zwei Crops im ROI — eine ALLOW, eine DENY."""
+        """Two crops in ROI with different confidences should result in one ALLOW and one DENY."""
         plants = {
             1: make_stable_plant(1, class_id=0, bbox=[270, 280, 370, 380], smoothed_conf=0.9),
             2: make_stable_plant(2, class_id=0, bbox=[270, 280, 370, 380], smoothed_conf=0.1),

@@ -23,6 +23,18 @@ def _generate_uncertainty_canvas(
         config: SystemConfig,
         action_line_y: int
 ) -> np.ndarray:
+    """
+    Generates a canvas visualizing uncertainty for active plants.
+
+    Args:
+        frame (np.ndarray): The original video frame.
+        active_plants (Dict[int, TrackedPlant]): Dictionary of currently tracked plants.
+        config (SystemConfig): The system configuration.
+        action_line_y (int): The y-coordinate of the action line.
+
+    Returns:
+        np.ndarray: The generated uncertainty canvas.
+    """
     h, w, _ = frame.shape
     canvas = np.zeros((h, w, 3), dtype=np.uint8)
 
@@ -69,6 +81,22 @@ def draw_predictions(
         frame_time_ms: float = 0.0,
         gpu_util: int = 0
 ) -> np.ndarray:
+    """
+    Draws predictions, bounding boxes, masks, and telemetry onto the video frame.
+    This version includes profiling steps for visualization components.
+
+    Args:
+        frame (np.ndarray): The original video frame.
+        active_plants (Dict[int, TrackedPlant]): Dictionary of currently tracked plants.
+        decisions (Dict[int, InterventionState]): Dictionary of intervention decisions for each plant.
+        config (SystemConfig): The system configuration.
+        inference_time_ms (float): Time taken for model inference in milliseconds.
+        frame_time_ms (float): Total time taken to process the current frame in milliseconds.
+        gpu_util (int): Current GPU utilization percentage.
+
+    Returns:
+        np.ndarray: The annotated frame with predictions and telemetry.
+    """
     h, w, _ = frame.shape
     action_line_y = int(h * (1.0 - config.decision.action_zone_ratio))
     fps = 1000.0 / frame_time_ms if frame_time_ms > 0 else 0.0
@@ -175,6 +203,15 @@ def draw_predictions(
 
 
 def _draw_telemetry(frame: np.ndarray, fps: float, inference_ms: float, gpu_util: int):
+    """
+    Draws system telemetry information (FPS, inference time, GPU utilization) onto the frame.
+
+    Args:
+        frame (np.ndarray): The frame to draw telemetry on.
+        fps (float): Frames per second.
+        inference_ms (float): Inference time in milliseconds.
+        gpu_util (int): GPU utilization percentage.
+    """
     box_w, box_h = 220, 90
     overlay = frame.copy()
     cv2.rectangle(overlay, (5, 5), (box_w, box_h), (0, 0, 0), -1)
