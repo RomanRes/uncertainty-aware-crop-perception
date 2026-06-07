@@ -73,8 +73,8 @@ Each tracked plant is represented by a digital twin stored in memory.
 Features:
 
 * Confidence history
-* Sliding confidence window
-* Exponential confidence smoothing
+* Sliding window averaging
+* Temporal confidence smoothing
 * Stability validation
 * Grace period for temporary tracking loss
 
@@ -85,16 +85,20 @@ Features:
 A rule-based decision layer evaluates every stable plant and assigns one of four states:
 
 | State        | Description                    |
-| ------------ | ------------------------------ |
+| ------------ | -----------
+------------------- |
 | ALLOW_ACTION | Robot may perform intervention |
 | DENY_ACTION  | Intervention blocked           |
 | MONITOR      | Continue observation           |
 | IGNORE       | Ignore object                  |
 
+YOLO confidence scores are used as a proxy for detection certainty. True model-level uncertainty (MC Dropout, Deep Ensembles) requires architectural changes incompatible with TensorRT real-time deployment. Instead, Shannon entropy is computed over the temporally smoothed confidence score for each tracked plant. When a plant enters the action zone, its entropy is evaluated against a configurable threshold — high entropy blocks robotic intervention, low entropy permits it. This decision is then locked for the duration of the plant's time in the action zone.
+
 Decision logic combines:
 
 * Plant class
 * Spatial location
+* Shannon entropy-based uncertainty estimation
 * Confidence score
 * Stability criteria
 * ROI geofencing
@@ -128,8 +132,9 @@ Video Frame
                ▼
 ┌─────────────────────────────────────┐
 │  State Memory                       │
-│  TrackedPlant Digital Twin          │
 │  Confidence Smoothing               │
+│  Entropy Estimation                 │
+│  Decision Locking                   │
 │  Grace Period                       │
 └──────────────┬──────────────────────┘
                │
@@ -137,7 +142,7 @@ Video Frame
 ┌─────────────────────────────────────┐
 │  Decision Engine                    │
 │  ROI Geofencing                     │
-│  Confidence Validation              │
+│  Entropy-Based Validation           │
 │  4-State Logic                      │
 └──────────────┬──────────────────────┘
                │
@@ -206,13 +211,7 @@ Example TensorRT FP16 run:
 | Visualization   | ~70 ms  |
 | Total Pipeline  | ~127 ms |
 
-Profiling showed that visualization consumed more runtime than inference itself.
-
-Disabling visualization increased throughput from approximately:
-
-```text
-7.9 FPS → 22.5 FPS
-```
+Visualization was identified as the primary bottleneck. Disabling visualization increased throughput from approximately 7.9 FPS to 22.5 FPS.
 
 Detailed profiling results are documented in:
 
@@ -290,53 +289,18 @@ Classes:
 ```text
 uncertainty-aware-crop-perception/
 │
-├── main.py                    # Main entry point for the perception pipeline
-├── main_profile.py            # Entry point for detailed performance profiling
-├── kaggle_run.py              # Script for running on Kaggle environments
-├── onnx_export.py             # Utility for exporting PyTorch models to ONNX format
-├── pytest.ini                 # Pytest configuration file
-├── README.md                  # Project README file
-├── .gitignore                 # Git ignore file
-├── output.gif                 # Demo output GIF
-├── 05-15_00053_P0030852.png   # Sample image file
+├── configs/      # Configuration files
+├── perception/   # Detection, segmentation and tracking
+├── decision/     # State memory and decision logic
+├── utils/        # Visualization, telemetry and helpers
+├── tests/        # Unit tests
+├── docs/         # Benchmark and validation reports
+├── notebooks/    # Research and benchmarking notebooks
+├── assets/       # Images, GIFs and videos
 │
-├── configs/
-│   └── default.yaml           # Centralized configuration for all pipeline parameters
-│
-├── perception/
-│   ├── tracker.py             # Manages YOLO model, ByteTrack, and mask processing
-│   └── inference.py           # Inference related utilities
-│
-├── decision/
-│   ├── state.py               # Defines TrackedPlant data model and StateManager for temporal memory
-│   └── policy.py              # Implements the DecisionEngine with ROI geofencing and 4-state logic
-│
-├── utils/
-│   ├── config_manager.py      # Handles loading and parsing YAML configurations into typed dataclasses
-│   ├── viz.py                 # Responsible for rendering annotated frames and uncertainty visualizations
-│   ├── viz_profile.py         # Profiling version of visualization utilities
-│   ├── logging.py             # System for logging telemetry data to CSV and JSON
-│   └── gpu_helper.py          # Monitors NVIDIA GPU utilization in real-time
-│
-├── tests/
-│   ├── conftest.py            # Pytest configuration for tests
-│   ├── test_state.py          # Unit tests for state management
-│   ├── test_policy.py         # Unit tests for decision policy
-│   └── test_tracker.py        # Unit tests for the tracker module
-│
-├── docs/
-│   ├── benchmarks.md          # Performance benchmark documentation
-│   ├── profiling.md           # Profiling results documentation
-│   └── validation.md          # Validation documentation
-│
-├── notebooks/
-│   ├── phenobench-yolo-dataset.ipynb      # Jupyter notebook for dataset exploration
-│   └── phenobench-profiling-benchmarks.ipynb # Jupyter notebook for profiling benchmarks
-│
-├── simulation/
-│   └── field_env.py           # Simulation environment for field conditions
-│
-└── data/                      # Directory for input/output data (e.g., videos, metrics)
+├── main.py
+├── main_profile.py
+└── README.md
 ```
 
 ---
@@ -384,7 +348,6 @@ pytest
 
 # Future Work
 
-* Jetson Orin deployment
 * TensorRT INT8 quantization
 * ROS2 integration
 * Multi-camera support

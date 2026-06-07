@@ -57,7 +57,7 @@ models/
 #*.mp4
 #.csv
 #.json
-
+.lnk
 # --- Weights & Biases (W&B) ---
 wandb/
 
