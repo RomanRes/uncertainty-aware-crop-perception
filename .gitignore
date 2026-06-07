@@ -52,11 +52,11 @@ models/
 
 # --- Dataset and Local I/O Data ---
 # Do not track raw videos, CSV logs or images
-data/
-configs/*.yaml.local
-*.mp4
-*.csv
-*.json
+#data/
+#configs/*.yaml.local
+#*.mp4
+#.csv
+#.json
 
 # --- Weights & Biases (W&B) ---
 wandb/

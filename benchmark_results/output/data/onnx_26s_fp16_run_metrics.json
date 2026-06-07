@@ -1,0 +1,22 @@
+{
+    "metadata": {
+        "total_frames_processed": 708,
+        "timestamp": "2026-06-06 14:50:37"
+    },
+    "performance_metrics": {
+        "mean_inference_time_ms": 50.87,
+        "mean_frame_time_ms": 53.57,
+        "mean_fps": 18.7
+    },
+    "tracking_metrics": {
+        "total_unique_ids_tracked": 169,
+        "mean_track_lifetime_frames": 103.9,
+        "max_track_lifetime_frames": 214,
+        "detected_id_class_swaps": 0
+    },
+    "decision_metrics": {
+        "total_allow_action_events": 2394,
+        "total_deny_action_events": 0,
+        "total_monitor_events": 2156
+    }
+}
