@@ -20,7 +20,7 @@ The pipeline generates an annotated output video showing:
 * System telemetry
 * Optional uncertainty visualization
 
-![Sample Detection](output.gif)
+![Sample Detection](assets/output.gif)
 
 ---
 
