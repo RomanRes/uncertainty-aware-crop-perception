@@ -20,7 +20,7 @@ The pipeline generates an annotated output video showing:
 * System telemetry
 * Optional uncertainty visualization
 
-![Sample Detection](assets/output.gif)
+![Sample Detection](output.gif)
 
 ---
 
@@ -288,34 +288,55 @@ Classes:
 # Project Structure
 
 ```text
-project/
+uncertainty-aware-crop-perception/
 │
-├── main.py
-├── main_profile.py
+├── main.py                    # Main entry point for the perception pipeline
+├── main_profile.py            # Entry point for detailed performance profiling
+├── kaggle_run.py              # Script for running on Kaggle environments
+├── onnx_export.py             # Utility for exporting PyTorch models to ONNX format
+├── pytest.ini                 # Pytest configuration file
+├── README.md                  # Project README file
+├── .gitignore                 # Git ignore file
+├── output.gif                 # Demo output GIF
+├── 05-15_00053_P0030852.png   # Sample image file
+│
 ├── configs/
+│   └── default.yaml           # Centralized configuration for all pipeline parameters
 │
 ├── perception/
-│   └── tracker.py
+│   ├── tracker.py             # Manages YOLO model, ByteTrack, and mask processing
+│   └── inference.py           # Inference related utilities
 │
 ├── decision/
-│   ├── state.py
-│   └── policy.py
+│   ├── state.py               # Defines TrackedPlant data model and StateManager for temporal memory
+│   └── policy.py              # Implements the DecisionEngine with ROI geofencing and 4-state logic
 │
 ├── utils/
-│   ├── config_manager.py
-│   ├── viz.py
-│   ├── logging.py
-│   └── gpu_helper.py
+│   ├── config_manager.py      # Handles loading and parsing YAML configurations into typed dataclasses
+│   ├── viz.py                 # Responsible for rendering annotated frames and uncertainty visualizations
+│   ├── viz_profile.py         # Profiling version of visualization utilities
+│   ├── logging.py             # System for logging telemetry data to CSV and JSON
+│   └── gpu_helper.py          # Monitors NVIDIA GPU utilization in real-time
 │
 ├── tests/
+│   ├── conftest.py            # Pytest configuration for tests
+│   ├── test_state.py          # Unit tests for state management
+│   ├── test_policy.py         # Unit tests for decision policy
+│   └── test_tracker.py        # Unit tests for the tracker module
 │
 ├── docs/
-│   ├── benchmarks.md
-│   └── profiling.md
+│   ├── benchmarks.md          # Performance benchmark documentation
+│   ├── profiling.md           # Profiling results documentation
+│   └── validation.md          # Validation documentation
 │
 ├── notebooks/
+│   ├── phenobench-yolo-dataset.ipynb      # Jupyter notebook for dataset exploration
+│   └── phenobench-profiling-benchmarks.ipynb # Jupyter notebook for profiling benchmarks
 │
-└── simulation/
+├── simulation/
+│   └── field_env.py           # Simulation environment for field conditions
+│
+└── data/                      # Directory for input/output data (e.g., videos, metrics)
 ```
 
 ---
