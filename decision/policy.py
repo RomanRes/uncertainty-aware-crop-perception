@@ -16,9 +16,9 @@ class DecisionEngine:
     """
 
     def __init__(self, config: SystemConfig):
-        # We now use the smoothed confidence score directly
         self.conf_threshold = config.model.conf_threshold
         self.action_zone_ratio = config.decision.action_zone_ratio
+        self.entropy_threshold = config.decision.entropy_threshold
 
     def evaluate_plants(
             self,
@@ -27,7 +27,8 @@ class DecisionEngine:
             frame_height: int
     ) -> Dict[int, InterventionState]:
         """
-        Evaluates active plants against the ROI and confidence constraints.
+        Evaluates active plants against the ROI and confidence constraints,
+        implementing a decision locking mechanism once a plant enters the action zone.
         """
         decisions = {}
 
@@ -40,11 +41,16 @@ class DecisionEngine:
         for plant_id, plant in active_plants.items():
             # Anti-Flicker & Crash Safety: Ensure stable tracking and valid bounding boxes
             if not plant.is_stable or plant.bbox is None:
+                decisions[plant_id] = InterventionState.MONITOR # Default to monitor if not stable or no bbox
+                plant.is_in_action_zone = False
+                plant.decision_locked = False
                 continue
 
             # Non-targets (Weeds = Class 1) are strictly ignored (IGNORE)
             if plant.class_id == 1:
                 decisions[plant_id] = InterventionState.IGNORE
+                plant.is_in_action_zone = False
+                plant.decision_locked = False
                 continue
 
             # Crops (Class 0) are the targets and require evaluation
@@ -58,13 +64,29 @@ class DecisionEngine:
                     roi_x_min <= center_x <= roi_x_max
             )
 
-            if not is_inside_roi:
-                decisions[plant_id] = InterventionState.MONITOR
-            else:
-                # 3. Decision based on smoothed temporal confidence
-                if plant.smoothed_conf >= self.conf_threshold:
-                    decisions[plant_id] = InterventionState.ALLOW_ACTION
+            if is_inside_roi:
+                # Plant is in the action zone
+                if not plant.is_in_action_zone:
+                    # First time entering action zone: lock its state for decision-making
+                    plant.is_in_action_zone = True
+                    plant.decision_locked = True # This prevents further updates to smoothed_conf/entropy in TrackedPlant.update_history
+
+                    # Make the decision based on the current (now locked) entropy
+                    if plant.entropy > self.entropy_threshold:
+                        decisions[plant_id] = InterventionState.DENY_ACTION
+                    else:
+                        decisions[plant_id] = InterventionState.ALLOW_ACTION
                 else:
-                    decisions[plant_id] = InterventionState.DENY_ACTION
+                    # Plant is already in the action zone and decision is locked
+                    # Re-evaluate decision based on its *locked* entropy (which hasn't changed)
+                    if plant.entropy > self.entropy_threshold:
+                        decisions[plant_id] = InterventionState.DENY_ACTION
+                    else:
+                        decisions[plant_id] = InterventionState.ALLOW_ACTION
+            else:
+                # Plant is outside the action zone
+                plant.is_in_action_zone = False
+                plant.decision_locked = False # Unlock its state
+                decisions[plant_id] = InterventionState.MONITOR
 
         return decisions

@@ -119,7 +119,7 @@ def main():
 
             # Calculate total frame latency for visualization
             frame_time_ms = (time.time() - start_frame_time) * 1000.0
-            """
+
             # STEP 6: Rendering (Draws decision-state-aware overlays with telemetry)
             t_start = time.time()
             annotated_frame = draw_predictions(
@@ -137,7 +137,7 @@ def main():
             t_start = time.time()
             out.write(annotated_frame)
             step_times["video_write"].append((time.time() - t_start) * 1000.0)
-            """
+
             # STEP 8: Telemetry Logging (Log all performance metrics to CSV)
             t_start = time.time()
             logger.log_frame(

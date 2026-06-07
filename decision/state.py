@@ -5,6 +5,7 @@ from enum import Enum
 import numpy as np
 from typing import Deque, Dict
 from utils.config_manager import MemoryConfig
+import math # Import the math module for log2
 
 
 class InterventionState(Enum):
@@ -30,6 +31,9 @@ class TrackedPlant:
     missing_count: int  = 0
     is_stable:    bool  = False
     smoothed_conf: float = 0.0
+    entropy: float = 0.0 # Add entropy field
+    is_in_action_zone: bool = False # New field to indicate if plant is in action zone
+    decision_locked: bool = False   # New field to lock decision-making values
 
     bbox: np.ndarray = None
     mask: np.ndarray = None
@@ -37,6 +41,8 @@ class TrackedPlant:
     def update_history(self, conf: float, bbox: np.ndarray, mask: np.ndarray, config: MemoryConfig):
         """
         Updates the plant's history with new detection information.
+        If decision_locked is True, only bbox, mask, seen_count, and missing_count are updated.
+        smoothed_conf and entropy are not updated to preserve the locked state.
 
         Args:
             conf (float): The confidence score of the current detection.
@@ -52,12 +58,21 @@ class TrackedPlant:
         if self.seen_count >= config.min_stable_frames:
             self.is_stable = True
 
-        if self.conf_history.maxlen != config.window_size:
-            self.conf_history = deque(self.conf_history, maxlen=config.window_size)
+        # Only update smoothed_conf and entropy if the decision is not locked
+        if not self.decision_locked:
+            if self.conf_history.maxlen != config.window_size:
+                self.conf_history = deque(self.conf_history, maxlen=config.window_size)
 
-        self.conf_history.append(conf)
+            self.conf_history.append(conf)
 
-        self.smoothed_conf = sum(self.conf_history) / len(self.conf_history)
+            self.smoothed_conf = sum(self.conf_history) / len(self.conf_history)
+
+            # Calculate entropy based on smoothed_conf
+            p = max(1e-9, min(1.0 - 1e-9, self.smoothed_conf))
+            self.entropy = (
+                -p * math.log2(p)
+                - (1.0 - p) * math.log2(1.0 - p)
+            )
 
 
 class StateManager:

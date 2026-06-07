@@ -9,6 +9,7 @@ from decision.state import TrackedPlant, InterventionState
 def _generate_uncertainty_canvas(
         frame: np.ndarray,
         active_plants: Dict[int, TrackedPlant],
+        decisions: Dict[int, InterventionState], # Added decisions parameter
         config: SystemConfig,
         action_line_y: int
 ) -> np.ndarray:
@@ -18,6 +19,7 @@ def _generate_uncertainty_canvas(
     Args:
         frame (np.ndarray): The original video frame.
         active_plants (Dict[int, TrackedPlant]): Dictionary of currently tracked plants.
+        decisions (Dict[int, InterventionState]): Dictionary of intervention decisions for each plant.
         config (SystemConfig): The system configuration.
         action_line_y (int): The y-coordinate of the action line.
 
@@ -43,17 +45,41 @@ def _generate_uncertainty_canvas(
 
         label_name = config.classes[cls_id].name if cls_id in config.classes else f"Unknown_{cls_id}"
 
-        conf = float(np.clip(plant.smoothed_conf, 0.0, 1.0))
-        color = (0, int(255 * conf), int(255 * (1.0 - conf)))
+        state = decisions.get(plant_id, InterventionState.MONITOR) # Get decision state for coloring
 
-        cv2.rectangle(canvas, (x1, y1), (x2, y2), (200, 200, 200), 1)
-        label = f"{label_name} #{plant_id} | C:{plant.smoothed_conf:.2f}"
+        # Determine box color based on decision state (matching left side)
+        if state == InterventionState.IGNORE:
+            box_color = (128, 128, 128) # Gray
+        elif state == InterventionState.MONITOR:
+            box_color = (255, 255, 0) # Cyan
+        elif state == InterventionState.ALLOW_ACTION:
+            box_color = tuple(config.classes[cls_id].color) if cls_id in config.classes else (0, 255, 0) # Configured class color (e.g., Green)
+        elif state == InterventionState.DENY_ACTION:
+            box_color = (0, 0, 255) # Red
+        else:
+            box_color = (128, 128, 128) # Default Gray
+
+        # Determine mask color based on entropy
+        if plant.entropy < 0.30:
+            mask_color = (0, 255, 0)  # Green
+        elif plant.entropy < 0.60:
+            mask_color = (0, 255, 255) # Yellow
+        else:
+            mask_color = (0, 0, 255)  # Red
+
+        cv2.rectangle(canvas, (x1, y1), (x2, y2), box_color, 2) # Bbox thickness changed to 2
+        # Update label to include entropy
+        label = (
+            f"{label_name} #{plant_id} | "
+            f"C:{plant.smoothed_conf:.2f} | "
+            f"H:{plant.entropy:.2f}"
+        )
         cv2.putText(canvas, label, (x1, y1 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (250, 250, 250), 1, cv2.LINE_AA)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (250, 250, 250), 1, cv2.LINE_AA) # Label text always white
 
         if plant.mask is not None:
             has_masks = True
-            mask_overlay[plant.mask] = color
+            mask_overlay[plant.mask] = mask_color # Mask color based on entropy
 
     if has_masks:
         canvas = cv2.addWeighted(canvas, 1.0, mask_overlay, 0.5, 0)
@@ -127,20 +153,21 @@ def draw_predictions(
 
         state = decisions.get(plant_id, InterventionState.MONITOR)
 
+        # Color for bounding box and label text on the left side, based on decision state
         if state == InterventionState.IGNORE:
-            color = (128, 128, 128)
+            color = (128, 128, 128) # Gray
             label_text = f"Weed #{plant_id} (IGNORE)"
         elif state == InterventionState.MONITOR:
-            color = (255, 255, 0)
-            label_text = f"Crop #{plant_id} (MONITOR) | C: {plant.smoothed_conf:.2f}"
+            color = (255, 255, 0) # Cyan
+            label_text = f"Crop #{plant_id} (MONITOR) | C: {plant.smoothed_conf:.2f} | H:{plant.entropy:.2f}"
         elif state == InterventionState.ALLOW_ACTION:
-            color = tuple(config.classes[cls_id].color) if cls_id in config.classes else (0, 255, 0)
-            label_text = f"Crop #{plant_id} (ALLOW_ACTION) | C: {plant.smoothed_conf:.2f}"
+            color = tuple(config.classes[cls_id].color) if cls_id in config.classes else (0, 255, 0) # Configured class color (e.g., Green)
+            label_text = f"Crop #{plant_id} (ALLOW_ACTION) | C: {plant.smoothed_conf:.2f} | H:{plant.entropy:.2f}"
         elif state == InterventionState.DENY_ACTION:
-            color = (0, 0, 255)
-            label_text = f"Crop #{plant_id} (DENY_ACTION) | C: {plant.smoothed_conf:.2f}"
+            color = (0, 0, 255) # Red
+            label_text = f"Crop #{plant_id} (DENY_ACTION) | C: {plant.smoothed_conf:.2f} | H:{plant.entropy:.2f}"
         else:
-            color = (128, 128, 128)
+            color = (128, 128, 128) # Default Gray
             label_text = f"#{plant_id}"
 
         cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
@@ -149,7 +176,7 @@ def draw_predictions(
 
         if plant.mask is not None:
             has_masks = True
-            mask_overlay[plant.mask] = color
+            mask_overlay[plant.mask] = color # Mask color matches bbox color on left side
 
     if has_masks:
         annotated_frame = cv2.addWeighted(annotated_frame, 1.0, mask_overlay, 0.4, 0)
@@ -157,7 +184,8 @@ def draw_predictions(
     # --- SIDE-BY-SIDE ---
     if config.io.side_by_side:
         try:
-            uncertainty_frame = _generate_uncertainty_canvas(frame, active_plants, config, action_line_y)
+            # Pass decisions to _generate_uncertainty_canvas
+            uncertainty_frame = _generate_uncertainty_canvas(frame, active_plants, decisions, config, action_line_y)
             if not isinstance(uncertainty_frame, np.ndarray) or uncertainty_frame.ndim != 3:
                 raise ValueError("Invalid Canvas")
         except Exception as e:

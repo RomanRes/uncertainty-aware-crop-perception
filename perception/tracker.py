@@ -5,6 +5,13 @@ import torch
 from ultralytics import YOLO
 from utils.config_manager import SystemConfig
 import os
+import logging # Import the logging module
+
+# Get a logger instance for this module
+logger = logging.getLogger(__name__)
+# Configure logging if not already configured (e.g., by main.py)
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class PlantTracker:
@@ -57,19 +64,19 @@ class PlantTracker:
         # ----------------------------------------------------------------------
         # Hardware Target Detection
         # ----------------------------------------------------------------------
-        print("TRACKER CUDA:", torch.cuda.is_available())
-        print("TRACKER GPU COUNT:", torch.cuda.device_count())
+        logger.info(f"TRACKER CUDA: {torch.cuda.is_available()}")
+        logger.info(f"TRACKER GPU COUNT: {torch.cuda.device_count()}")
 
         # FP16 acceleration is restricted to CUDA devices (CPUs do not natively support half)
         self.device = 0 if torch.cuda.is_available() else "cpu"
         self.use_half = torch.cuda.is_available()
 
-        print("TRACKER DEVICE:", self.device)
+        logger.info(f"TRACKER DEVICE: {self.device}")
 
         # ----------------------------------------------------------------------
         # Model Loading & Device Allocation (Single Source of Truth)
         # ----------------------------------------------------------------------
-        print(f"Loading model: {base_model_path}")
+        logger.info(f"Loading model: {base_model_path}")
         ext = os.path.splitext(base_model_path)[1].lower()
 
         if ext == ".pt":
@@ -81,9 +88,10 @@ class PlantTracker:
             # Do NOT call .to() on .onnx or .engine to prevent runtime backend conflicts.
             self.model = YOLO(base_model_path, task="segment")
         else:
+            logger.error(f"Unsupported model format: {ext}")
             raise ValueError(f"Unsupported model format: {ext}")
 
-        print(f"Tracker initialized using: {self.tracker_type}")
+        logger.info(f"Tracker initialized using: {self.tracker_type}")
 
         # ----------------------------------------------------------------------
         # Temporal Tracking Memory Initialization
